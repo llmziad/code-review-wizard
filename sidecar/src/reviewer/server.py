@@ -45,6 +45,7 @@ from .context.assembler import assemble
 from .github_client import GitHubClient
 from .models import PipelineEvent, ReviewReport
 from .pipeline import review_pr_stream
+from .triage import RunNotFoundError, dismiss, load_report, post_subset
 
 # ---------------------------------------------------------------------------
 # IO primitives
@@ -175,7 +176,39 @@ async def handle_review_pr(params: dict, emit) -> dict:
     return {"run_id": final_report.run_id, "report": final_report.model_dump(mode="json")}
 
 
-# Triage / replay handlers — implemented in task 22 (post_review, dismiss, get_run).
+# ---- Triage / replay handlers ----
+
+
+async def handle_get_run(params: dict, emit) -> dict:
+    run_id = params["run_id"]
+    settings = get_settings()
+    report = load_report(settings, run_id)
+    return report.model_dump(mode="json")
+
+
+async def handle_post_review(params: dict, emit) -> dict:
+    """Post a subset of a previously-cached run's comments to GitHub."""
+    run_id = params["run_id"]
+    comment_ids = params.get("comment_ids")  # None = all
+    edits = params.get("edits") or {}
+    settings = get_settings()
+    with GitHubClient(None, settings.cache_dir) as gh:
+        review_url = await asyncio.to_thread(
+            post_subset, gh, settings, run_id, comment_ids, edits
+        )
+    return {"review_url": review_url}
+
+
+async def handle_dismiss_comments(params: dict, emit) -> dict:
+    """Record user dismissals in dropped.json for the feedback loop."""
+    run_id = params["run_id"]
+    comment_ids = params["comment_ids"]
+    reason = params.get("reason", "")
+    settings = get_settings()
+    count = await asyncio.to_thread(dismiss, settings, run_id, comment_ids, reason)
+    return {"dismissed": count}
+
+
 # Schema export — implemented in task 23.
 
 
@@ -188,6 +221,9 @@ HANDLERS: dict[str, Callable[..., Awaitable[dict]]] = {
     "list_prs": handle_list_prs,
     "inspect_pr": handle_inspect_pr,
     "review_pr": handle_review_pr,
+    "get_run": handle_get_run,
+    "post_review": handle_post_review,
+    "dismiss_comments": handle_dismiss_comments,
 }
 
 
@@ -221,6 +257,11 @@ async def _dispatch_one(request: dict) -> None:
         await _emit({
             "id": req_id,
             "error": {"type": "AuthMissingError", "message": str(e)},
+        })
+    except RunNotFoundError as e:
+        await _emit({
+            "id": req_id,
+            "error": {"type": "RunNotFoundError", "message": str(e)},
         })
     except Exception as e:
         await _emit({

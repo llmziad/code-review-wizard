@@ -12,10 +12,16 @@ downstream code simple.
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _new_comment_id() -> str:
+    """8-char hex id for review comments. Used by triage (approve/dismiss/edit)."""
+    return uuid.uuid4().hex[:8]
 
 # ---------------------------------------------------------------------------
 # Type aliases — used wherever a constrained string would otherwise drift.
@@ -159,10 +165,15 @@ class ReviewComment(BaseModel):
 
     `extra="forbid"` keeps the LLM tool-use contract tight: any drift between
     the prompt's tool schema and this model is a loud failure, not a silent one.
+
+    `id` is generated on construction (the LLM doesn't supply it). The desktop
+    app uses this id to address specific comments for approve / dismiss / edit
+    triage before the review is posted.
     """
 
     model_config = ConfigDict(extra="forbid")
 
+    id: str = Field(default_factory=_new_comment_id)
     file_path: str
     line: int = Field(gt=0)
     category: Category
