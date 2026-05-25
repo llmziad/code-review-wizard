@@ -33,6 +33,8 @@ from rich.table import Table
 from .auth import (
     AuthMissingError,
     clear_auth,
+    device_flow_poll,
+    device_flow_start,
     fetch_github_user,
     load_auth,
     login_with_pat,
@@ -70,35 +72,78 @@ def _main() -> None:
 def login_cmd(
     token: str | None = typer.Option(
         None, "--token", "-t",
-        help="GitHub Personal Access Token. If omitted, prompts interactively.",
+        help="GitHub Personal Access Token. If omitted (and --device not set), prompts.",
+    ),
+    device: bool = typer.Option(
+        False, "--device", "-d",
+        help="Use GitHub OAuth Device Flow — opens browser, no PAT to manage.",
     ),
     json_out: bool = typer.Option(False, "--json", help="Emit result as JSON to stdout."),
 ) -> None:
-    """Store GitHub credentials for the CLI (and, later, the GUI)."""
-    if not token:
-        if sys.stdin.isatty():
-            console.print(
-                "[dim]Create a PAT at https://github.com/settings/tokens/new "
-                "with `repo` and `read:user` scopes.[/dim]"
-            )
-            token = typer.prompt("Paste your token", hide_input=True)
-        else:
-            _fail("No --token provided and not a TTY for interactive paste.", json_out)
-            raise typer.Exit(2)
+    """Store GitHub credentials. Three paths: --device (recommended), --token, interactive."""
+    if device:
+        auth = _do_device_flow(json_out)
+    else:
+        if not token:
+            if sys.stdin.isatty():
+                console.print(
+                    "[dim]Tip: `reviewer login --device` is friendlier — no PAT to create.[/dim]\n"
+                    "[dim]Otherwise: create a PAT at https://github.com/settings/tokens/new "
+                    "with `repo` and `read:user` scopes.[/dim]"
+                )
+                token = typer.prompt("Paste your token", hide_input=True)
+            else:
+                _fail("No --token or --device provided and not a TTY for interactive paste.", json_out)
+                raise typer.Exit(2)
 
-    try:
-        auth = login_with_pat(token)
-    except Exception as e:
-        _fail(f"Login failed: {e}", json_out)
-        raise typer.Exit(1) from e
+        try:
+            auth = login_with_pat(token)
+        except Exception as e:
+            _fail(f"Login failed: {e}", json_out)
+            raise typer.Exit(1) from e
 
     if json_out:
         _emit_json(auth.model_dump(mode="json"))
     else:
         console.print(
-            f"[green]Logged in as[/green] [cyan]@{auth.user_login}[/cyan] "
+            f"\n[green]Logged in as[/green] [cyan]@{auth.user_login}[/cyan] "
             f"[dim]({auth.token_type})[/dim]"
         )
+
+
+def _do_device_flow(json_out: bool):
+    """Run the OAuth Device Flow. Returns the StoredAuth on success."""
+    try:
+        challenge = device_flow_start()
+    except Exception as e:
+        _fail(f"Could not start device flow: {e}", json_out)
+        raise typer.Exit(1) from e
+
+    if json_out:
+        # In JSON mode, print the challenge so a frontend can render it,
+        # then continue polling. The final auth result comes from the caller.
+        _emit_json({
+            "stage": "challenge",
+            "user_code": challenge.user_code,
+            "verification_uri": challenge.verification_uri,
+            "expires_in": challenge.expires_in,
+        })
+    else:
+        console.print(
+            f"\n[bold]Visit:[/bold]  [cyan link={challenge.verification_uri}]"
+            f"{challenge.verification_uri}[/cyan link]\n"
+            f"[bold]Enter:[/bold]  [yellow bold]{challenge.user_code}[/yellow bold]\n"
+        )
+        console.print("[dim]Waiting for you to approve in the browser...[/dim]")
+
+    try:
+        return device_flow_poll(challenge)
+    except TimeoutError as e:
+        _fail("Device flow expired before you approved. Try again.", json_out)
+        raise typer.Exit(1) from e
+    except Exception as e:
+        _fail(f"Device flow failed: {e}", json_out)
+        raise typer.Exit(1) from e
 
 
 @app.command("logout")

@@ -23,6 +23,12 @@ cache/
 # uv lockfile is committed; uv lockfile cache is not
 .uv/
 
+# Node / Electron (app/ will use these)
+node_modules/
+app/dist/
+app/out/
+app/.vite/
+
 # OS / editor
 .DS_Store
 .idea/

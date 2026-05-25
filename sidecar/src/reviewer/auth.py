@@ -26,6 +26,7 @@ import os
 import shutil
 import subprocess
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -226,9 +227,16 @@ def login_with_pat(token: str) -> StoredAuth:
 
 
 # ---------------------------------------------------------------------------
-# OAuth Device Flow (scaffolded; activates when CRW_OAUTH_CLIENT_ID is set)
+# OAuth Device Flow
 # ---------------------------------------------------------------------------
+#
+# Bundled client_id for the official "Code Review Wizard" GitHub OAuth App.
+# This is intentionally public — OAuth Apps' client_id is not a secret, and
+# the Device Flow doesn't use a client_secret. Override with the
+# CRW_OAUTH_CLIENT_ID env var if you want to point at your own OAuth App
+# (useful for forks or for internal deployments).
 
+_DEFAULT_OAUTH_CLIENT_ID = "Ov23lior5HyqZnLLHhQT"
 _OAUTH_CLIENT_ID_ENV = "CRW_OAUTH_CLIENT_ID"
 _DEVICE_CODE_URL = "https://github.com/login/device/code"
 _DEVICE_TOKEN_URL = "https://github.com/login/oauth/access_token"
@@ -247,17 +255,12 @@ class DeviceFlowChallenge(BaseModel):
 
 
 class DeviceFlowUnavailable(RuntimeError):
-    """Raised when no OAuth App client_id is configured."""
+    """Raised when the OAuth App's client_id cannot be resolved."""
 
 
 def oauth_client_id() -> str:
-    cid = os.environ.get(_OAUTH_CLIENT_ID_ENV, "").strip()
-    if not cid:
-        raise DeviceFlowUnavailable(
-            f"{_OAUTH_CLIENT_ID_ENV} is not set. Register an OAuth App on GitHub, "
-            "set this env var to its client_id, or use `--token <PAT>` instead."
-        )
-    return cid
+    """Override-aware. Env var wins; bundled default is the fallback."""
+    return (os.environ.get(_OAUTH_CLIENT_ID_ENV) or _DEFAULT_OAUTH_CLIENT_ID).strip()
 
 
 def device_flow_start(scopes: str = _DEFAULT_SCOPES) -> DeviceFlowChallenge:
@@ -279,8 +282,15 @@ def device_flow_start(scopes: str = _DEFAULT_SCOPES) -> DeviceFlowChallenge:
     )
 
 
-def device_flow_poll(challenge: DeviceFlowChallenge) -> StoredAuth:
-    """Step 2 — poll until the user completes the flow, then save."""
+def device_flow_poll(
+    challenge: DeviceFlowChallenge,
+    on_poll: "Callable[[int], None] | None" = None,
+) -> StoredAuth:
+    """Step 2 — poll until the user completes the flow, then save.
+
+    `on_poll(seconds_remaining)` is called before each sleep — useful for
+    CLI spinners and sidecar progress events. The callback should not block.
+    """
     deadline = time.time() + challenge.expires_in
     interval = challenge.interval
 
@@ -303,10 +313,14 @@ def device_flow_poll(challenge: DeviceFlowChallenge) -> StoredAuth:
 
         error = payload.get("error")
         if error == "authorization_pending":
+            if on_poll:
+                on_poll(int(deadline - time.time()))
             time.sleep(interval)
             continue
         if error == "slow_down":
             interval += 5
+            if on_poll:
+                on_poll(int(deadline - time.time()))
             time.sleep(interval)
             continue
         raise RuntimeError(f"Device flow failed: {payload}")
