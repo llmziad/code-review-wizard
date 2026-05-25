@@ -284,7 +284,7 @@ def device_flow_start(scopes: str = _DEFAULT_SCOPES) -> DeviceFlowChallenge:
 
 def device_flow_poll(
     challenge: DeviceFlowChallenge,
-    on_poll: "Callable[[int], None] | None" = None,
+    on_poll: Callable[[int], None] | None = None,
 ) -> StoredAuth:
     """Step 2 — poll until the user completes the flow, then save.
 

@@ -86,10 +86,13 @@ def _comment(
 
 @pytest.fixture
 def patch_pipeline(monkeypatch: pytest.MonkeyPatch):
-    """Inject a stub pass + a stub assemble so review_pr never touches GitHub/Anthropic."""
+    """Stub the pipeline's substeps + the pass so review_pr stays offline.
+
+    The streaming pipeline inlines Stage 1 (no `assemble` symbol to patch),
+    so we patch each substep instead. Returns (bundle, gh_stub) for the test.
+    """
     bundle = _bundle()
-    # Different categories on L10 and L11 keep them in separate dedup buckets,
-    # so we can observe two inline survivors + one orphan in the same test.
+    # Different categories on L10 and L11 keep them in separate dedup buckets.
     stub_comments = [
         _comment(line=10, conf=0.95, severity="blocking", category="structure"),
         _comment(line=11, conf=0.80, severity="suggestion", category="readability"),
@@ -97,12 +100,29 @@ def patch_pipeline(monkeypatch: pytest.MonkeyPatch):
         _comment(line=999, conf=0.90, severity="suggestion", category="maintainability"),  # orphan
     ]
 
-    monkeypatch.setattr("reviewer.pipeline.assemble", lambda url, gh: bundle)
+    monkeypatch.setattr("reviewer.pipeline.parse_diff", lambda diff, repo: ([], bundle.diff_line_anchors))
+    monkeypatch.setattr("reviewer.pipeline.enrich_all", lambda symbols, repo: bundle.changed_symbols)
+    monkeypatch.setattr(
+        "reviewer.pipeline.get_conventions_snippet",
+        lambda contexts: bundle.repo_conventions_snippet,
+    )
     monkeypatch.setattr(
         "reviewer.analysis.router.pick_passes",
         lambda b, s=None: [_StubPass(stub_comments)],
     )
-    return bundle
+
+    class _FakeGH:
+        def fetch_pr_metadata(self, url):
+            return bundle.pr
+
+        def fetch_diff(self, pr):
+            return bundle.full_diff
+
+        def clone_repo(self, pr):
+            from pathlib import Path
+            return Path("/tmp/fake-repo")
+
+    return _FakeGH()
 
 
 def test_pipeline_produces_inline_and_orphan_split(tmp_path: Path, patch_pipeline) -> None:
@@ -113,7 +133,7 @@ def test_pipeline_produces_inline_and_orphan_split(tmp_path: Path, patch_pipelin
         max_suggestion_comments=10,
         max_nit_comments=10,
     )
-    report = asyncio.run(review_pr("https://example.com/pr/1", gh=None, settings=settings))  # type: ignore[arg-type]
+    report = asyncio.run(review_pr("https://example.com/pr/1", gh=patch_pipeline, settings=settings))
 
     # 3 survived confidence; the 0.40 nit was dropped
     assert report.total_candidates == 4
@@ -128,7 +148,7 @@ def test_pipeline_produces_inline_and_orphan_split(tmp_path: Path, patch_pipelin
 
 def test_pipeline_records_cost(tmp_path: Path, patch_pipeline) -> None:
     settings = Settings(cache_dir=tmp_path, anthropic_model="claude-sonnet-4-6")
-    report = asyncio.run(review_pr("https://example.com/pr/1", gh=None, settings=settings))  # type: ignore[arg-type]
+    report = asyncio.run(review_pr("https://example.com/pr/1", gh=patch_pipeline, settings=settings))
 
     cs = report.cost_summary
     assert cs.total_input_tokens == 1000
@@ -140,7 +160,7 @@ def test_pipeline_records_cost(tmp_path: Path, patch_pipeline) -> None:
 
 def test_pipeline_persists_run_artifacts(tmp_path: Path, patch_pipeline) -> None:
     settings = Settings(cache_dir=tmp_path, min_confidence=0.7)
-    asyncio.run(review_pr("https://example.com/pr/1", gh=None, settings=settings))  # type: ignore[arg-type]
+    asyncio.run(review_pr("https://example.com/pr/1", gh=patch_pipeline, settings=settings))
 
     runs = list((tmp_path / "runs").iterdir())
     assert len(runs) == 1

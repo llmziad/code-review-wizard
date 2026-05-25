@@ -195,6 +195,39 @@ class CostSummary(BaseModel):
     by_pass: dict[str, dict[str, float]] = Field(default_factory=dict)
 
 
+PipelineStage = Literal["context", "analysis", "filtering"]
+PipelineEventKind = Literal[
+    "started",
+    "progress",
+    "pass_started",
+    "pass_completed",
+    "completed",
+]
+
+
+class PipelineEvent(BaseModel):
+    """One progress signal from the streaming pipeline.
+
+    The streaming generator emits these between every meaningful step so the
+    desktop UI (and any CLI watcher) can render real-time progress instead of
+    staring at a 10-second blank wait.
+
+    Field meanings by event kind:
+        started / completed   — stage boundary
+        progress              — within-stage milestone (detail describes it)
+        pass_started          — Stage 2 only; `name` is the pass name
+        pass_completed        — Stage 2 only; tokens_* and duration_ms set
+    """
+
+    stage: PipelineStage
+    event: PipelineEventKind
+    detail: str | None = None
+    name: str | None = None  # set for pass_* events
+    tokens_input: int | None = None
+    tokens_output: int | None = None
+    duration_ms: int | None = None
+
+
 class ReviewReport(BaseModel):
     """Filtered, prioritized output of Stage 3 — what Stage 4 delivers.
 
@@ -213,3 +246,4 @@ class ReviewReport(BaseModel):
     total_candidates: int = 0
     total_posted: int = 0
     cost_summary: CostSummary = Field(default_factory=CostSummary)
+    run_id: str | None = None  # set by pipeline when persisted; used by post_review / dismiss
