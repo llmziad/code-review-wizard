@@ -45,6 +45,7 @@ from .context.assembler import assemble
 from .github_client import GitHubClient
 from .models import PipelineEvent, ReviewReport
 from .pipeline import review_pr_stream
+from .schema_export import build_schema_doc
 from .triage import RunNotFoundError, dismiss, load_report, post_subset
 
 # ---------------------------------------------------------------------------
@@ -209,7 +210,9 @@ async def handle_dismiss_comments(params: dict, emit) -> dict:
     return {"dismissed": count}
 
 
-# Schema export — implemented in task 23.
+async def handle_schema(params: dict, emit) -> dict:
+    """Return the JSON Schema doc for all public sidecar types."""
+    return build_schema_doc()
 
 
 HANDLERS: dict[str, Callable[..., Awaitable[dict]]] = {
@@ -224,6 +227,7 @@ HANDLERS: dict[str, Callable[..., Awaitable[dict]]] = {
     "get_run": handle_get_run,
     "post_review": handle_post_review,
     "dismiss_comments": handle_dismiss_comments,
+    "schema": handle_schema,
 }
 
 

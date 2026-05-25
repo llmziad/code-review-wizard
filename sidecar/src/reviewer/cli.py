@@ -450,5 +450,31 @@ def serve_cmd() -> None:
     serve_blocking()
 
 
+@app.command("schema")
+def schema_cmd(
+    out: str | None = typer.Option(
+        None, "--out", "-o",
+        help="Write to this file. If omitted, prints to stdout.",
+    ),
+) -> None:
+    """Emit JSON Schema for all public sidecar types.
+
+    The desktop app's build step consumes this — pipe through quicktype
+    to produce TypeScript types. One source of truth for the IPC contract.
+    """
+    import json as _json
+
+    from .schema_export import build_schema_doc
+    doc = build_schema_doc()
+    payload = _json.dumps(doc, indent=2, default=str)
+    if out:
+        from pathlib import Path
+        Path(out).write_text(payload + "\n")
+        console.print(f"[green]Wrote schema to {out}[/green]")
+    else:
+        sys.stdout.write(payload)
+        sys.stdout.write("\n")
+
+
 if __name__ == "__main__":
     app()
