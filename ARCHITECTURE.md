@@ -76,6 +76,42 @@ stage simpler.
 
 ## 3. Key architectural decisions
 
+### Sidecar process over per-call subprocess for the desktop app
+The CLI doubles as a long-lived sidecar (`reviewer serve`). The desktop app
+spawns it once at launch and exchanges line-delimited JSON requests on
+stdin/stdout. The alternative — spawn a fresh CLI subprocess per call — burns
+~200ms of Python startup every list refresh and makes streaming progress hard.
+The sidecar pays the startup cost once, runs concurrent requests as asyncio
+tasks (each tagged with `request_id` so events route correctly to the UI),
+and streams real-time pipeline events back as they happen.
+
+JSON-RPC over stdio specifically (not HTTP) because: no port conflicts, no
+firewall prompts on macOS, no `launchctl`-style daemon to manage, and Electron
+owns the process lifecycle naturally — kill the parent, the child dies.
+
+### Streaming pipeline via async generator
+`pipeline.review_pr_stream(...)` yields `PipelineEvent` objects at every
+meaningful step (fetching metadata, cloning, parsing, each LLM pass) and
+finally yields the `ReviewReport`. The CLI's non-streaming `review_pr` wraps
+it for callers that don't care about progress, but the sidecar surfaces every
+event to the renderer so the UI shows "Cloning repo... Resolving callers for
+14 symbols... Pass maintainability completed (7,234 in / 1,200 out tokens)..."
+instead of a 10-second blank wait.
+
+**Alternative rejected:** Single `review_pr() -> ReviewReport` and let the UI
+fake progress with a spinner. That works but lies — when the model takes 8s
+the user has no idea if it's stuck. Real progress is honest.
+
+### Triage as a separate stage on cached runs
+Every run persists `report.json`. The desktop app's per-comment
+approve/dismiss/edit triage operates on that file via three operations:
+`get_run`, `post_review(comment_ids, edits)`, `dismiss_comments(ids, reason)`.
+None re-run the pipeline. Each `ReviewComment` carries a stable 8-char id
+(generated at construction, not by the LLM) so the renderer can address
+specific comments across save/load round trips. Dismissals append to a new
+`dropped_by_user` array in `dropped.json`, parallel to the existing filter-drop
+sections — the feedback loop can tell the two apart.
+
 ### Symbol-level diff parsing, not line-level
 A unified diff tells you "what bytes moved." A symbol diff tells you "what
 behavior changed." Reviews are about behavior. Tree-sitter parses the post-

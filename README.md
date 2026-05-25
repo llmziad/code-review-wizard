@@ -65,8 +65,57 @@ If you already use the `gh` CLI, you can skip `login` entirely — the cascade p
 | `reviewer inspect <url>` | Build and print the context bundle (no LLM call, no posting). |
 | `reviewer review <url>` | Full pipeline → terminal output. |
 | `reviewer review <url> --post` | Full pipeline → posts a single GitHub review. |
+| `reviewer serve` | Run as a JSON-RPC sidecar (for the desktop app). |
+| `reviewer schema [--out path]` | Emit JSON Schema for all public sidecar types. |
 
-Every command supports `--json` for machine-readable output.
+Every interactive command supports `--json` for machine-readable output.
+
+---
+
+## Sidecar mode (for the desktop app)
+
+The Electron app spawns `reviewer serve` and communicates over stdin/stdout with line-delimited JSON. The same backend that powers the CLI powers the GUI; no duplication, one source of truth.
+
+```bash
+# What the desktop app does internally
+reviewer serve   # waits for JSON requests on stdin
+```
+
+**Protocol**:
+
+```jsonl
+→ {"id": "1", "method": "list_prs", "params": {"filter": "review-requested"}}
+← {"id": "1", "result": {"review_requested": [...]}}
+
+→ {"id": "2", "method": "review_pr", "params": {"url": "https://..."}}
+← {"event": "started", "request_id": "2", "stage": "context"}
+← {"event": "progress", "request_id": "2", "stage": "context", "detail": "Cloning repo (shallow)"}
+← {"event": "pass_completed", "request_id": "2", "stage": "analysis", "tokens_input": 7234, ...}
+← {"event": "completed", "request_id": "2", "stage": "filtering"}
+← {"id": "2", "result": {"run_id": "...", "report": {...}}}
+
+→ {"id": "3", "method": "post_review", "params": {"run_id": "...", "comment_ids": ["abc", "def"]}}
+← {"id": "3", "result": {"review_url": "https://github.com/..."}}
+```
+
+**Available methods**:
+
+| Method | Returns | Notes |
+|---|---|---|
+| `whoami` | user info | |
+| `login_pat` | StoredAuth | input: `{token}` |
+| `login_device_start` | DeviceFlowChallenge | step 1 of OAuth device flow |
+| `login_device_poll` | StoredAuth | step 2; emits `login_polling` countdown events |
+| `logout` | `{removed: bool}` | |
+| `list_prs` | grouped PRSummary list | input: `{filter, limit}` |
+| `inspect_pr` | ContextBundle | no LLM call |
+| `review_pr` | `{run_id, report}` | **streams** PipelineEvent during execution |
+| `get_run` | ReviewReport | retrieve a cached run |
+| `post_review` | `{review_url}` | input: `{run_id, comment_ids?, edits?}` for triage |
+| `dismiss_comments` | `{dismissed: int}` | logs to `dropped.json` for the feedback loop |
+| `schema` | JSON Schema doc | the typed contract surface |
+
+Each event carries `request_id` so the renderer can route progress to the right UI surface. Requests run concurrently in their own asyncio tasks — a long `review_pr` doesn't block a `list_prs` from the sidebar.
 
 ---
 
