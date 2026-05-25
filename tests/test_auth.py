@@ -74,3 +74,30 @@ def test_resolve_token_falls_back_to_stored(isolated_config: Path) -> None:
 def test_resolve_token_raises_when_nothing_available(isolated_config: Path) -> None:
     with pytest.raises(AuthMissingError, match="No GitHub credentials"):
         resolve_token()
+
+
+def test_missing_auth_message_prompts_install_when_gh_not_installed(
+    isolated_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If gh is missing, the error should tell the user how to install it."""
+    monkeypatch.setattr("reviewer.auth.shutil.which", lambda _: None)
+    with pytest.raises(AuthMissingError) as exc:
+        resolve_token()
+    message = str(exc.value)
+    assert "brew install gh" in message
+    assert "gh auth login" in message
+
+
+def test_missing_auth_message_prompts_login_when_gh_installed(
+    isolated_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If gh is installed but returned no token, point straight at `gh auth login`."""
+    monkeypatch.setattr("reviewer.auth.shutil.which", lambda _: "/usr/local/bin/gh")
+    # `_try_gh_cli_token` is already neutralized by the fixture → returns None
+    with pytest.raises(AuthMissingError) as exc:
+        resolve_token()
+    message = str(exc.value)
+    assert "you're not logged in" in message
+    assert "gh auth login" in message
+    # Should NOT include the install instructions — gh is already there
+    assert "brew install gh" not in message

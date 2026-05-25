@@ -97,6 +97,8 @@ def resolve_token() -> str:
     """Walk env → gh → stored → raise. Returns the first usable token.
 
     Invoked by GitHubClient construction when no explicit token is passed.
+    The raised error is tailored to what's actually missing — the install
+    instruction matters more than a generic "credentials not found".
     """
     env = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if env:
@@ -110,9 +112,46 @@ def resolve_token() -> str:
     if stored:
         return stored.access_token
 
-    raise AuthMissingError(
-        "No GitHub credentials found. Run `reviewer login --token <PAT>`, "
-        "set GITHUB_TOKEN, or install the `gh` CLI and run `gh auth login`."
+    raise AuthMissingError(_missing_auth_message())
+
+
+def _missing_auth_message() -> str:
+    """Headline + body. Branches on whether `gh` is installed.
+
+    Designed for rich rendering by `cli._fail`: first line is the headline,
+    the rest is detail. Plain text — markup happens in the renderer.
+    """
+    gh_installed = shutil.which("gh") is not None
+
+    if not gh_installed:
+        return (
+            "No GitHub credentials found.\n"
+            "\n"
+            "The easiest setup is the GitHub CLI:\n"
+            "  brew install gh                  (macOS)\n"
+            "  winget install GitHub.cli        (Windows)\n"
+            "  # other platforms: https://cli.github.com\n"
+            "  gh auth login\n"
+            "\n"
+            "Then re-run this command — no other setup needed.\n"
+            "\n"
+            "Alternatives if you'd rather not install gh:\n"
+            "  reviewer login --token <PAT>     (paste a personal access token)\n"
+            "  export GITHUB_TOKEN=<token>      (env var, useful in CI)"
+        )
+
+    # gh is installed but didn't return a token → user hasn't logged in
+    return (
+        "No GitHub credentials found.\n"
+        "\n"
+        "You have the GitHub CLI installed but you're not logged in. Run:\n"
+        "  gh auth login\n"
+        "\n"
+        "Then re-run this command — we'll pick up the token automatically.\n"
+        "\n"
+        "Alternatives:\n"
+        "  reviewer login --token <PAT>\n"
+        "  export GITHUB_TOKEN=<token>"
     )
 
 

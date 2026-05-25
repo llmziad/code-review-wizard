@@ -373,12 +373,20 @@ def _emit_json(payload: object) -> None:
 
 
 def _fail(message: str, json_out: bool) -> None:
+    """Print an error. In JSON mode → structured to stderr. Otherwise:
+    first line is the headline (bold red); the rest is detail (plain),
+    so multi-line guidance with install commands stays readable.
+    """
     if json_out:
         import json
         json.dump({"error": message}, sys.stderr, indent=2)
         sys.stderr.write("\n")
-    else:
-        err_console.print(f"[red]{message}[/red]")
+        return
+
+    headline, _, detail = message.partition("\n")
+    err_console.print(f"[red bold]{headline}[/red bold]")
+    if detail:
+        err_console.print(detail)
 
 
 if __name__ == "__main__":
