@@ -1,0 +1,34 @@
+{
+  "name": "code-review-wizard-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop app for Code Review Wizard. Wraps the Python sidecar.",
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
+    "generate:types": "cd ../sidecar && uv run reviewer schema --out ../app/src/shared/schemas.json && cd ../app && npx quicktype -s schema --src src/shared/schemas.json --lang typescript --just-types --top-level Schemas -o src/shared/types.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.0",
+    "electron-vite": "^2.3.0",
+    "quicktype": "^23.0.171",
+    "tailwindcss": "^4.0.0-beta.5",
+    "@tailwindcss/vite": "^4.0.0-beta.5",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.2"
+  }
+}

@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+/* Base typography that matches the terminal CLI feel — high-density, monospace
+   accents on metadata, generous line-height in body copy. */
+:root {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--font-sans);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+code, kbd, pre {
+  font-family: var(--font-mono);
+}
+
+/* Make titlebar draggable on macOS without showing OS chrome */
+.app-drag {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
