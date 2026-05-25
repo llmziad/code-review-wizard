@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Secrets
+.env
+
+# Runtime cache (regenerable)
+cache/
+
+# uv lockfile is committed; uv lockfile cache is not
+.uv/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code workspace state
+.claude/

@@ -1,0 +1,11 @@
+{
+  "owner": "anthropics",
+  "repo": "anthropic-sdk-python",
+  "number": 1244,
+  "title": "fix(client): AsyncAnthropic._make_status_error missing 529 and 413 cases",
+  "description": "## What\n\n`AsyncAnthropic._make_status_error` is missing the `529 → OverloadedError` and `413 → RequestTooLargeError` cases that the sync `Anthropic._make_status_error` has. So for async users:\n\n- HTTP 529 raises `InternalServerError` (falls through to the `>= 500` catch-all) instead of `OverloadedError`\n- HTTP 413 raises the base `APIStatusError` instead of `RequestTooLargeError`\n\nThis PR copies the two missing `if` arms from the sync method into the async one, and adds a parametrized parity test so the two copies can't drift silently again.\n\n## Origin\n\n#854 (commit b87dcf12, merged 2025-02-19) added these two cases to the sync client at `_client.py` L257. The diff in that PR is a single hunk touching only the sync method — the async copy further down in the same file was missed. Still the case on `main` today:\n\n```\nsync   L285: if response.status_code == 529: return OverloadedError(...)\nasync  L522: if response.status_code >= 500: return InternalServerError(...)   # no 529 check\n```\n\n## Verification\n\nRan the new parity test against current `main` — it fails on exactly 413 and 529:\n\n```\nFAIL 413: sync=RequestTooLargeError         async=APIStatusError\nFAIL 529: sync=OverloadedError              async=InternalServerError\n```\n\nand passes with the fix applied.\n",
+  "author": "stephen",
+  "base_sha": "49d639a671cb0ac30c767e8e1e68fdd5925205d5",
+  "head_sha": "0868f8a123d64241e7f83c2d4b897155bc61d106",
+  "url": "https://github.com/anthropics/anthropic-sdk-python/pull/1244"
+}

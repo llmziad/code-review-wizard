@@ -1,0 +1,47 @@
+[project]
+name = "smart-code-reviewer"
+version = "0.1.0"
+description = "AI code reviewer that produces structured, high-signal review comments on GitHub PRs."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.40.0",
+    "pygithub>=2.1.0",
+    "tree-sitter>=0.21.0,<0.22.0",
+    "tree-sitter-languages>=1.10.2",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.2.0",
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+reviewer = "reviewer.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "respx>=0.21.0",
+    "ruff>=0.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/reviewer"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
