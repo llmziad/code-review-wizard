@@ -47,6 +47,7 @@ from .delivery.terminal_renderer import render_report
 from .github_client import GitHubClient
 from .models import ContextBundle, PRSummary
 from .pipeline import new_run_dir, run_review_sync
+from .server import serve_blocking
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -432,6 +433,21 @@ def _fail(message: str, json_out: bool) -> None:
     err_console.print(f"[red bold]{headline}[/red bold]")
     if detail:
         err_console.print(detail)
+
+
+# ---------------------------------------------------------------------------
+# Sidecar mode (JSON-RPC over stdio for the desktop app)
+# ---------------------------------------------------------------------------
+
+
+@app.command("serve")
+def serve_cmd() -> None:
+    """Run as a JSON-RPC sidecar — reads requests from stdin, writes to stdout.
+
+    This is what the desktop app spawns. Don't run it interactively; pipe
+    JSON requests in, one per line. See server.py for the protocol.
+    """
+    serve_blocking()
 
 
 if __name__ == "__main__":
