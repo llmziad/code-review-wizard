@@ -21,7 +21,9 @@ function createWindow(): BrowserWindow {
     titleBarStyle: "hiddenInset",
     backgroundColor: "#09090b",
     webPreferences: {
-      preload: join(__dirname, "../preload/index.js"),
+      // electron-vite builds the preload as .mjs (ESM); pointing at .js
+      // silently fails to load and leaves `window.reviewer` undefined.
+      preload: join(__dirname, "../preload/index.mjs"),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
