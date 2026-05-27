@@ -82,7 +82,17 @@ export type SidecarEvent = {
   [k: string]: unknown;
 };
 
-const REQUEST_TIMEOUT_MS = 30_000;
+/**
+ * Idle timeout: if the sidecar emits nothing (no response, no event) for
+ * this long, we assume the request is wedged and reject it. Every event
+ * resets the clock — so a long-running review_pr that streams progress
+ * keeps the timer alive, but a silently-hung sidecar still fails fast.
+ *
+ * 90s sized for the slowest single quiet stretch: an LLM call between
+ * `pass_started` and `pass_completed` with no intermediate events. Sonnet
+ * 4.6 is typically 10-30s on a medium PR; 90s gives headroom for slow days.
+ */
+const REQUEST_IDLE_TIMEOUT_MS = 90_000;
 
 type PendingRequest = {
   resolve: (value: unknown) => void;
@@ -203,8 +213,26 @@ export class Sidecar {
     // Streaming event (has `event` and `request_id`).
     if (msg.event && typeof msg.request_id === "string") {
       const pending = this.pending.get(msg.request_id);
-      pending?.onEvent?.(msg as SidecarEvent);
+      if (pending) {
+        // Reset the idle timeout — the sidecar is making progress.
+        this.armTimeout(pending, msg.request_id, msg.event);
+        pending.onEvent?.(msg as SidecarEvent);
+      }
     }
+  }
+
+  /** (Re)arm the idle timeout for a pending request. */
+  private armTimeout(pending: PendingRequest, reqId: string, lastEvent: string): void {
+    clearTimeout(pending.timeout);
+    pending.timeout = setTimeout(() => {
+      this.pending.delete(reqId);
+      pending.reject(
+        new Error(
+          `Sidecar request (id=${reqId}) idle for ${REQUEST_IDLE_TIMEOUT_MS}ms ` +
+            `(last event: ${lastEvent}). Check the main-process terminal for [sidecar stderr].`,
+        ),
+      );
+    }, REQUEST_IDLE_TIMEOUT_MS);
   }
 
   private rejectAllPending(err: Error): void {
@@ -229,22 +257,17 @@ export class Sidecar {
     if (!this.proc) throw new Error("Sidecar failed to start");
     const reqId = id ?? cryptoRandomId();
     return new Promise<T>((resolveFn, rejectFn) => {
-      const timeout = setTimeout(() => {
-        this.pending.delete(reqId);
-        rejectFn(
-          new Error(
-            `Sidecar request '${method}' (id=${reqId}) timed out after ${REQUEST_TIMEOUT_MS}ms. ` +
-              "Check the main-process terminal for [sidecar stderr] lines.",
-          ),
-        );
-      }, REQUEST_TIMEOUT_MS);
-
-      this.pending.set(reqId, {
+      // Initial timeout — overwritten by `armTimeout` immediately so the
+      // same code path manages it from here on.
+      const pending: PendingRequest = {
         resolve: resolveFn as (v: unknown) => void,
         reject: rejectFn,
         onEvent,
-        timeout,
-      });
+        timeout: setTimeout(() => {}, 0),
+      };
+      this.pending.set(reqId, pending);
+      this.armTimeout(pending, reqId, `request '${method}'`);
+
       const payload = JSON.stringify({ id: reqId, method, params }) + "\n";
       console.log(`[sidecar ←] ${payload.trim().slice(0, 200)}`);
       this.proc!.stdin.write(payload);
