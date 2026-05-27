@@ -19,9 +19,32 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// In dev: app/out/main/index.js → ../../sidecar. In a packaged build we'll
-// ship the sidecar alongside; that path lands in task 35.
-const SIDECAR_DIR = resolve(__dirname, "../../sidecar");
+/**
+ * Locate the sidecar directory by walking up from this file until we find
+ * `sidecar/pyproject.toml`. Bulletproof across dev vs packaged builds and
+ * any future `out/` directory reshuffling. (My previous `../../sidecar`
+ * was off-by-one — landed in `app/sidecar`, which doesn't exist.)
+ */
+function findSidecarDir(): string {
+  let dir = __dirname;
+  for (let i = 0; i < 8; i++) {
+    const candidate = resolve(dir, "sidecar");
+    try {
+      accessSync(resolve(candidate, "pyproject.toml"));
+      return candidate;
+    } catch {
+      // not here; keep walking up
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error(
+    `Could not find sidecar/pyproject.toml walking up from ${__dirname}`,
+  );
+}
+
+const SIDECAR_DIR = findSidecarDir();
 
 /**
  * Resolve `uv` to an absolute path.
