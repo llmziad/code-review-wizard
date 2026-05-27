@@ -12,6 +12,7 @@
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { accessSync, constants as fsConstants } from "node:fs";
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +22,36 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // In dev: app/out/main/index.js → ../../sidecar. In a packaged build we'll
 // ship the sidecar alongside; that path lands in task 35.
 const SIDECAR_DIR = resolve(__dirname, "../../sidecar");
+
+/**
+ * Resolve `uv` to an absolute path.
+ *
+ * macOS GUI-launched apps (and Node's `spawn` on macOS) don't reliably honor
+ * a custom PATH in `options.env` for command lookup — relying on it leaves
+ * us at the mercy of whatever launchd-style PATH Electron inherited.
+ *
+ * Solution: probe the well-known install locations directly, return the
+ * first executable hit. Bare "uv" is the last-resort fallback.
+ */
+function resolveUvPath(): string {
+  const candidates = [
+    `${process.env["HOME"]}/.local/bin/uv`, // standard uv installer
+    "/opt/homebrew/bin/uv",                  // Apple Silicon Homebrew
+    "/usr/local/bin/uv",                     // Intel Homebrew + manual installs
+    `${process.env["HOME"]}/.cargo/bin/uv`,  // if installed via cargo
+  ];
+  for (const path of candidates) {
+    try {
+      accessSync(path, fsConstants.X_OK);
+      return path;
+    } catch {
+      // not at this location
+    }
+  }
+  return "uv"; // PATH fallback (will fail with the same ENOENT if missing)
+}
+
+const UV_PATH = resolveUvPath();
 
 export type SidecarEvent = {
   event: string;
@@ -67,12 +98,14 @@ export class Sidecar {
       process.env["PATH"] ?? "",
     ].join(":");
 
-    console.log(`[sidecar] spawning: cwd=${SIDECAR_DIR}`);
-    console.log(`[sidecar] PATH=${augmentedPath}`);
+    console.log(`[sidecar] spawning: ${UV_PATH} run reviewer serve`);
+    console.log(`[sidecar] cwd=${SIDECAR_DIR}`);
 
-    const proc = spawn("uv", ["run", "reviewer", "serve"], {
+    const proc = spawn(UV_PATH, ["run", "reviewer", "serve"], {
       cwd: SIDECAR_DIR,
       stdio: ["pipe", "pipe", "pipe"],
+      // PATH is also augmented in case the sidecar shells out to `gh` for token
+      // resolution — same reason `uv` was hidden, `gh` could be too.
       env: { ...process.env, PATH: augmentedPath },
     });
 
