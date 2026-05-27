@@ -4,8 +4,21 @@ A code review tool for engineers who actually want their reviews read. Backed by
 
 Two surfaces, one backend:
 
-- **CLI** — works today. Auth, list PRs across all your repos, run a structured maintainability review, post a single GitHub review.
-- **Desktop app** — in progress. Electron + React on top of the sidecar's JSON-RPC API. Inbox view of every PR awaiting your review; per-comment approve/dismiss/edit before posting.
+- **Desktop app** (Electron) — inbox of PRs awaiting your review, click into one, watch the review pipeline stream live, approve/dismiss/edit comments before posting as a single GitHub review.
+- **CLI** — same backend, scriptable. Useful for CI integration, `--json` output, and the moments when a window is overkill.
+
+## Quickstart — desktop app
+
+```bash
+git clone https://github.com/llmziad/code-review-wizard.git
+cd code-review-wizard
+
+./scripts/install.sh          # one-time: syncs sidecar, installs app deps, generates types
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> sidecar/.env
+./scripts/start.sh            # launches the window
+```
+
+On first launch you'll get a "Sign in with GitHub" screen → device-flow login → your inbox.
 
 ---
 
@@ -24,7 +37,7 @@ The sidecar runs standalone — engineers who want only the CLI never need `app/
 
 ---
 
-## Quickstart (CLI)
+## Quickstart — CLI only
 
 ```bash
 cd sidecar
@@ -173,15 +186,24 @@ Tree-sitter symbol extraction works on **Python, TypeScript, JavaScript, TSX, JS
 
 ---
 
-## Roadmap
+## What's shipped vs roadmap
 
-| In progress | Soon | Eventually |
-|---|---|---|
-| Electron desktop app | Per-comment triage (approve/dismiss/edit before post) | Code signing + notarization (paid Mac App) |
-| `reviewer serve` JSON-RPC mode | Streaming progress events | Auto-update |
-| Schema export for TS bindings | Per-repo conventions file | Second pass: correctness |
-| | Prompt caching | Third pass: security |
-| | OS keychain token storage | Adaptive pass routing |
+**Shipped (v0.1):**
+- CLI: login (device flow + PAT), whoami, list, inspect, review, post, JSON mode for every command
+- Sidecar mode: `reviewer serve` JSON-RPC over stdio with streaming pipeline events
+- Triage actions on cached runs: `post_review`, `dismiss_comments`, `get_run`
+- Schema export → TypeScript type generation
+- Desktop app: inbox · PR detail · live streaming review · per-comment triage · single-review post · login/settings screens
+
+**Roadmap:**
+| Soon | Eventually |
+|---|---|
+| Monaco diff viewer in the PR detail view | Code signing + notarization (paid Mac App distribution) |
+| Auto-update via electron-updater | Second pass: correctness |
+| OS keychain token storage (Electron safeStorage) | Third pass: security |
+| In-app sidecar config editing | Adaptive pass routing |
+| Per-repo conventions file | Prompt caching for ~20% input cost reduction |
+| Packaged binaries (.dmg / .exe / .AppImage) | Webhook deployment as an alternative to the desktop app |
 
 The architecture (see `ARCHITECTURE.md`) is designed so each lands as a contained change, not a rewrite.
 
