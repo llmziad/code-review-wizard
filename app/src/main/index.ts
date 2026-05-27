@@ -32,6 +32,8 @@ function createWindow(): BrowserWindow {
 
   if (process.env["ELECTRON_RENDERER_URL"]) {
     win.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+    // Auto-open devtools in dev so renderer-side errors are visible without Cmd+Opt+I.
+    win.webContents.openDevTools({ mode: "right" });
   } else {
     win.loadFile(join(__dirname, "../renderer/index.html"));
   }

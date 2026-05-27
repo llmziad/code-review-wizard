@@ -28,10 +28,13 @@ export type SidecarEvent = {
   [k: string]: unknown;
 };
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 type PendingRequest = {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   onEvent?: (event: SidecarEvent) => void;
+  timeout: NodeJS.Timeout;
 };
 
 export class Sidecar {
@@ -54,20 +57,37 @@ export class Sidecar {
   }
 
   private async doStart(): Promise<void> {
+    // PATH for GUI-launched Electron sometimes omits user-local installs
+    // (uv lives in ~/.local/bin). Ensure those locations are searchable.
+    const homeBin = `${process.env["HOME"]}/.local/bin`;
+    const augmentedPath = [
+      homeBin,
+      "/usr/local/bin",
+      "/opt/homebrew/bin",
+      process.env["PATH"] ?? "",
+    ].join(":");
+
+    console.log(`[sidecar] spawning: cwd=${SIDECAR_DIR}`);
+    console.log(`[sidecar] PATH=${augmentedPath}`);
+
     const proc = spawn("uv", ["run", "reviewer", "serve"], {
       cwd: SIDECAR_DIR,
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env },
+      env: { ...process.env, PATH: augmentedPath },
     });
 
     // Surface stderr to the Electron console so failures aren't silent.
     proc.stderr.on("data", (chunk) => {
-      process.stderr.write(`[sidecar] ${chunk}`);
+      process.stderr.write(`[sidecar stderr] ${chunk}`);
     });
 
     proc.on("error", (err) => {
       console.error("[sidecar] spawn error:", err);
       this.rejectAllPending(err);
+    });
+
+    proc.on("spawn", () => {
+      console.log(`[sidecar] spawned pid=${proc.pid}`);
     });
 
     proc.on("exit", (code, signal) => {
@@ -89,7 +109,10 @@ export class Sidecar {
     });
 
     this.rl = createInterface({ input: proc.stdout });
-    this.rl.on("line", (line) => this.handleLine(line));
+    this.rl.on("line", (line) => {
+      console.log(`[sidecar →] ${line.slice(0, 200)}${line.length > 200 ? "…" : ""}`);
+      this.handleLine(line);
+    });
 
     this.proc = proc;
   }
@@ -109,6 +132,7 @@ export class Sidecar {
       const pending = this.pending.get(msg.id);
       if (!pending) return; // stale
       this.pending.delete(msg.id);
+      clearTimeout(pending.timeout);
       if (msg.error) {
         const err = Object.assign(new Error(msg.error.message), {
           type: msg.error.type,
@@ -128,7 +152,10 @@ export class Sidecar {
   }
 
   private rejectAllPending(err: Error): void {
-    for (const [, p] of this.pending) p.reject(err);
+    for (const [, p] of this.pending) {
+      clearTimeout(p.timeout);
+      p.reject(err);
+    }
     this.pending.clear();
   }
 
@@ -146,14 +173,25 @@ export class Sidecar {
     if (!this.proc) throw new Error("Sidecar failed to start");
     const reqId = id ?? cryptoRandomId();
     return new Promise<T>((resolveFn, rejectFn) => {
+      const timeout = setTimeout(() => {
+        this.pending.delete(reqId);
+        rejectFn(
+          new Error(
+            `Sidecar request '${method}' (id=${reqId}) timed out after ${REQUEST_TIMEOUT_MS}ms. ` +
+              "Check the main-process terminal for [sidecar stderr] lines.",
+          ),
+        );
+      }, REQUEST_TIMEOUT_MS);
+
       this.pending.set(reqId, {
         resolve: resolveFn as (v: unknown) => void,
         reject: rejectFn,
         onEvent,
+        timeout,
       });
-      this.proc!.stdin.write(
-        JSON.stringify({ id: reqId, method, params }) + "\n",
-      );
+      const payload = JSON.stringify({ id: reqId, method, params }) + "\n";
+      console.log(`[sidecar ←] ${payload.trim().slice(0, 200)}`);
+      this.proc!.stdin.write(payload);
     });
   }
 
