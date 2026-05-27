@@ -5,4 +5,5 @@ dist/
 *.log
 .DS_Store
 src/shared/schemas.json
-src/shared/types.ts
+# Note: src/shared/types.ts IS committed (generated, but part of the import surface).
+# Re-run `npm run generate:types` after any sidecar schema change.

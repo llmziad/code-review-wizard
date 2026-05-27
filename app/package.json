@@ -10,7 +10,7 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
-    "generate:types": "cd ../sidecar && uv run reviewer schema --out ../app/src/shared/schemas.json && cd ../app && npx quicktype -s schema --src src/shared/schemas.json --lang typescript --just-types --top-level Schemas -o src/shared/types.ts"
+    "generate:types": "mkdir -p src/shared && cd ../sidecar && uv run reviewer schema --out ../app/src/shared/schemas.json && cd ../app && npx json2ts -i src/shared/schemas.json -o src/shared/types.ts --unreachableDefinitions --no-additionalProperties"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -19,7 +19,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.2.0",
     "electron-vite": "^2.3.0",
-    "quicktype": "^23.0.171",
+    "json-schema-to-typescript": "^15.0.4",
     "tailwindcss": "^4.0.0-beta.5",
     "@tailwindcss/vite": "^4.0.0-beta.5",
     "typescript": "^5.7.2",
