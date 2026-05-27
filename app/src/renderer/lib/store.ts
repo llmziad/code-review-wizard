@@ -15,6 +15,14 @@ export type ReviewProgress = {
   error?: string;
 };
 
+export type CommentDecision = "pending" | "approved" | "dismissed";
+
+export type PostingState =
+  | { kind: "idle" }
+  | { kind: "posting" }
+  | { kind: "posted"; url: string }
+  | { kind: "error"; message: string };
+
 type AppState = {
   // Which PR is open in the detail view. null = inbox.
   activePrUrl: string | null;
@@ -35,6 +43,17 @@ type AppState = {
   completeReview: (report: ReviewReport) => void;
   failReview: (error: string) => void;
   resetReview: () => void;
+
+  // Triage state — what's the user's decision on each comment.
+  triage: Record<string, CommentDecision>;
+  edits: Record<string, string>;
+  setDecision: (id: string, decision: CommentDecision) => void;
+  setEdit: (id: string, body: string) => void;
+  clearEdit: (id: string) => void;
+
+  // Posting state — what happened when "Post" was clicked.
+  posting: PostingState;
+  setPosting: (state: PostingState) => void;
 };
 
 export const useStore = create<AppState>((set) => ({
@@ -46,6 +65,9 @@ export const useStore = create<AppState>((set) => ({
       bundleLoading: true,
       report: null,
       progress: { events: [], status: "idle" },
+      triage: {},
+      edits: {},
+      posting: { kind: "idle" },
     }),
   backToInbox: () =>
     set({
@@ -54,6 +76,9 @@ export const useStore = create<AppState>((set) => ({
       bundleLoading: false,
       report: null,
       progress: { events: [], status: "idle" },
+      triage: {},
+      edits: {},
+      posting: { kind: "idle" },
     }),
 
   bundle: null,
@@ -66,11 +91,54 @@ export const useStore = create<AppState>((set) => ({
   pushEvent: (event) =>
     set((s) => ({ progress: { ...s.progress, events: [...s.progress.events, event] } })),
   startReview: () =>
-    set({ progress: { events: [], status: "running" }, report: null }),
+    set({
+      progress: { events: [], status: "running" },
+      report: null,
+      triage: {},
+      edits: {},
+      posting: { kind: "idle" },
+    }),
   completeReview: (report) =>
-    set((s) => ({ progress: { ...s.progress, status: "completed" }, report })),
+    set((s) => {
+      // Seed every comment as pending so the triage UI has a starting decision.
+      const triage: Record<string, CommentDecision> = {};
+      [
+        ...(report.comments ?? []),
+        ...(report.orphan_comments ?? []),
+      ].forEach((c) => {
+        if (c.id) triage[c.id] = "pending";
+      });
+      return {
+        progress: { ...s.progress, status: "completed" },
+        report,
+        triage,
+        edits: {},
+        posting: { kind: "idle" },
+      };
+    }),
   failReview: (error) =>
     set((s) => ({ progress: { ...s.progress, status: "error", error } })),
   resetReview: () =>
-    set({ progress: { events: [], status: "idle" }, report: null }),
+    set({
+      progress: { events: [], status: "idle" },
+      report: null,
+      triage: {},
+      edits: {},
+      posting: { kind: "idle" },
+    }),
+
+  triage: {},
+  edits: {},
+  setDecision: (id, decision) =>
+    set((s) => ({ triage: { ...s.triage, [id]: decision } })),
+  setEdit: (id, body) =>
+    set((s) => ({ edits: { ...s.edits, [id]: body } })),
+  clearEdit: (id) =>
+    set((s) => {
+      const { [id]: _removed, ...rest } = s.edits;
+      return { edits: rest };
+    }),
+
+  posting: { kind: "idle" },
+  setPosting: (state) => set({ posting: state }),
 }));
