@@ -54,6 +54,11 @@ type AppState = {
   // Posting state — what happened when "Post" was clicked.
   posting: PostingState;
   setPosting: (state: PostingState) => void;
+
+  // Settings overlay.
+  viewingSettings: boolean;
+  openSettings: () => void;
+  closeSettings: () => void;
 };
 
 export const useStore = create<AppState>((set) => ({
@@ -141,4 +146,8 @@ export const useStore = create<AppState>((set) => ({
 
   posting: { kind: "idle" },
   setPosting: (state) => set({ posting: state }),
+
+  viewingSettings: false,
+  openSettings: () => set({ viewingSettings: true }),
+  closeSettings: () => set({ viewingSettings: false }),
 }));
