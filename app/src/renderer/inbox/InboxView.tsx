@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type ListPrsResult } from "@renderer/lib/api";
+import { useStore } from "@renderer/lib/store";
 import type { PRSummary } from "@shared/types";
 
 type State =
@@ -117,13 +118,12 @@ function Section(props: {
 }
 
 function PRCard({ pr }: { pr: PRSummary }) {
+  const openPr = useStore((s) => s.openPr);
   return (
     <li>
-      <a
-        href={pr.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block rounded-md border border-transparent px-3 py-3 transition hover:border-zinc-800 hover:bg-zinc-900/50"
+      <button
+        onClick={() => openPr(pr.url)}
+        className="block w-full rounded-md border border-transparent px-3 py-3 text-left transition hover:border-zinc-800 hover:bg-zinc-900/50"
       >
         <div className="flex items-baseline gap-2">
           <span className="font-mono text-xs text-zinc-500">#{pr.number}</span>
@@ -139,7 +139,7 @@ function PRCard({ pr }: { pr: PRSummary }) {
           by <span className="text-zinc-400">@{pr.author}</span> · updated{" "}
           {formatRelative(pr.updated_at)}
         </p>
-      </a>
+      </button>
     </li>
   );
 }

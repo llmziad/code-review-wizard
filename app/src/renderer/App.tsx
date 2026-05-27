@@ -1,6 +1,10 @@
 import { InboxView } from "./inbox/InboxView";
+import { PRDetailView } from "./detail/PRDetailView";
+import { useStore } from "./lib/store";
 
 export function App() {
+  const activePrUrl = useStore((s) => s.activePrUrl);
+
   return (
     <div className="flex h-screen w-screen flex-col">
       <header className="app-drag flex h-12 shrink-0 items-center justify-between border-b border-zinc-800 px-4">
@@ -10,7 +14,7 @@ export function App() {
         <span className="text-xs text-zinc-600">v0.1.0</span>
       </header>
       <main className="flex-1 overflow-hidden">
-        <InboxView />
+        {activePrUrl ? <PRDetailView /> : <InboxView />}
       </main>
     </div>
   );
