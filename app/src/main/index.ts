@@ -6,7 +6,7 @@
  * - Registers ipcMain handlers that translate renderer calls into sidecar requests.
  */
 
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { sidecar } from "./sidecar";
@@ -37,6 +37,14 @@ function createWindow(): BrowserWindow {
   } else {
     win.loadFile(join(__dirname, "../renderer/index.html"));
   }
+
+  // <a target="_blank"> and renderer-side window.open route to the system
+  // browser instead of opening a new BrowserWindow. Essential for the OAuth
+  // device-flow link (github.com/login/device) and PR links from the inbox.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
 
   return win;
 }
